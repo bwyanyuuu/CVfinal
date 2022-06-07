@@ -7,7 +7,9 @@ def save_ply(Z,color,filepath):
     data = np.zeros((Z.shape[0]*Z.shape[1],3),dtype=np.float32)
     img_color = np.zeros((Z.shape[0]*Z.shape[1],3),dtype=np.float32)
     # let all point float on a base plane 
-    Z_map[np.where(Z_map != 0)] *= 2
+    baseline_val = np.min(Z_map)
+    Z_map[np.where(Z_map == 0)] = baseline_val
+    #Z_map[np.where(Z_map != 0)] *= 2
     for i in range(Z.shape[0]):
         for j in range(Z.shape[1]):
             idx = i * Z.shape[1] + j
@@ -29,7 +31,7 @@ def show_ply(filepath):
     o3d.visualization.draw_geometries([pcd])
 
 
-img = cv2.imread('./result/depthMap.png', 0)
+img = cv2.imread('./depth map/tsukuba.png', 0)
 color = cv2.imread('./img/ImL.png')
 print(color.shape)
 
