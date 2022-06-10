@@ -32,8 +32,8 @@ def outlier_detection(label, label_r):
 # imgRight = cv2.imread('./img/tsukuba_r.png', 0)
 # rgbLeft = cv2.imread('./img/tsukuba_rgb_l.png')
 # rgbRight = cv2.imread('./img/tsukuba_rgb_r.png')
-rgbLeft = cv2.imread('./img/view1.png')
-rgbRight = cv2.imread('./img/view5.png')
+rgbLeft = cv2.imread('./img/im4.png')
+rgbRight = cv2.imread('./img/im6.png')
 rgbLeft = np.array(rgbLeft, dtype=np.int16)
 rgbRight = np.array(rgbRight, dtype=np.int16)
 h, w, ch = rgbLeft.shape
@@ -110,7 +110,7 @@ stereo_r = cv2.StereoBM_create(numDisparities=16, blockSize=13)
 
 ######## Cost Volume Filtering ########
 print('* Cost Volume Filtering')
-max_disp = 480
+max_disp = 192
 def costVolume(rgbLeft, rgbRight, max_disp):
     print('* Cost Volume Filtering')
     h, w, ch = rgbLeft.shape
