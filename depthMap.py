@@ -28,10 +28,12 @@ def outlier_detection(label, label_r):
 
 
 # load images
-imgLeft = cv2.imread('./img/tsukuba_l.png', 0)
-imgRight = cv2.imread('./img/tsukuba_r.png', 0)
-rgbLeft = cv2.imread('./img/tsukuba_rgb_l.png')
-rgbRight = cv2.imread('./img/tsukuba_rgb_r.png')
+# imgLeft = cv2.imread('./img/tsukuba_l.png', 0)
+# imgRight = cv2.imread('./img/tsukuba_r.png', 0)
+# rgbLeft = cv2.imread('./img/tsukuba_rgb_l.png')
+# rgbRight = cv2.imread('./img/tsukuba_rgb_r.png')
+rgbLeft = cv2.imread('./img/view1.png')
+rgbRight = cv2.imread('./img/view5.png')
 rgbLeft = np.array(rgbLeft, dtype=np.int16)
 rgbRight = np.array(rgbRight, dtype=np.int16)
 h, w, ch = rgbLeft.shape
@@ -44,15 +46,17 @@ stereo_r = cv2.StereoBM_create(numDisparities=16, blockSize=13)
 # stereo_r = cv2.ximgproc.createRightMatcher(stereo_l);
 
 # Compute the disparity image
-dspLeft = stereo_l.compute(imgLeft, imgRight)
-dspRight = np.flip(stereo_r.compute(np.flip(imgRight, axis=1), np.flip(imgLeft, axis=1)), axis=1)
+# dspLeft = stereo_l.compute(imgLeft, imgRight)
+# dspRight = np.flip(stereo_r.compute(np.flip(imgRight, axis=1), np.flip(imgLeft, axis=1)), axis=1)
+
 # dspLeft -=(dspLeft.min() - dspRight.min())
 # dspRight = np.int8(dspRight / 32)
 # dspRight = -1 * dspRight
 
 # Normalize the image for representation
-dspLeftv = normalize(dspLeft)
-dspRightv = normalize(dspRight)
+# dspLeftv = normalize(dspLeft)
+# dspRightv = normalize(dspRight)
+
 # dspRightv -= 255
 # cv2.normalize(dspLeft, dspLeftv, 0, 255, cv2.NORM_MINMAX)
 # cv2.normalize(dspRight, dspRightv, 0, 255, cv2.NORM_MINMAX)
@@ -66,12 +70,13 @@ dspRightv = normalize(dspRight)
 # print(dspRight.min())
 # print(dspLeft.max())
 # print(dspRight.max())
-dspLeft = np.int8(dspLeft / 16)
-dspRight = np.int8(dspRight / 16)
+
+# dspLeft = np.int8(dspLeft / 16)
+# dspRight = np.int8(dspRight / 16)
 
 # Display the result
-cv2.imwrite('./depth map/depthMap-left.png', dspLeftv)
-cv2.imwrite('./depth map/depthMap-right.png', dspRightv)
+# cv2.imwrite('./depth map/depthMap-left.png', dspLeftv)
+# cv2.imwrite('./depth map/depthMap-right.png', dspRightv)
 
 
 ######## SGBM ########
@@ -105,7 +110,7 @@ cv2.imwrite('./depth map/depthMap-right.png', dspRightv)
 
 ######## Cost Volume Filtering ########
 print('* Cost Volume Filtering')
-max_disp = 16
+max_disp = 480
 def costVolume(rgbLeft, rgbRight, max_disp):
     print('* Cost Volume Filtering')
     h, w, ch = rgbLeft.shape
@@ -189,7 +194,7 @@ def cvf(Il, Ir, fx_l, fx_r, max_disp):
     dis = (np.argmin(dispVol, axis = 2) + np.ones((h,w)) ).astype(int)
     return dis.copy()
 
-# Il_g = imgLeft/255.0
+# Il_g = rgbLeft/255.0
 # Ir_g = imgRight/255.0
 Il_g = matlabBGR2gray(rgbLeft)/255.0
 Ir_g = matlabBGR2gray(rgbRight)/255.0
@@ -206,21 +211,21 @@ cv2.imwrite('./depth map/depthMap_r.png', normalize(dspRight))
 ######## Disparity Consistancy ########
 print('* Disparity Consistancy')
 print(dspLeft.shape)
-check = np.zeros(imgLeft.shape)
+check = np.zeros((h, w))
 for i in range(rgbLeft.shape[0]):
     for j in range(rgbLeft.shape[1]):
         # print(dspLeft[i][j])
         # if dspLeft[i][j] == -1:
         #     continue
-        if j - dspLeft[i][j] >= imgLeft.shape[1] or j - dspLeft[i][j] < 0:
+        if j - dspLeft[i][j] >= rgbLeft.shape[1] or j - dspLeft[i][j] < 0:
             continue
         if abs(dspLeft[i][j] - dspRight[i][j - dspLeft[i][j]]) < 2:
             check[i][j] = 255
         # print(j + dspLeft[i][j])
-        # if j + dspLeft[i][j] >= imgLeft.shape[1]:
+        # if j + dspLeft[i][j] >= rgbLeft.shape[1]:
         #     # print("**")
         #     continue
-        # elif imgRight[i][j + dspLeft[i][j]] - imgLeft[i][j] < 30:
+        # elif imgRight[i][j + dspLeft[i][j]] - rgbLeft[i][j] < 30:
         #     check[i][j] == 255
 check = np.uint8(check)
 cv2.imwrite('./depth map/depthMap-check.png', check)
@@ -233,7 +238,7 @@ cv2.imwrite('./depth map/depthMap-check.png', check)
 print('* Hole Filling')
 # print(dspLeft)
 # print(check)
-after_fill = np.zeros(imgLeft.shape)
+after_fill = np.zeros((h, w))
 for i in range(rgbLeft.shape[0]):
     for j in range(rgbLeft.shape[1]):
         if check[i][j] == 0:
