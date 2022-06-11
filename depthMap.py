@@ -1,123 +1,29 @@
-from matplotlib.pyplot import axis
 import numpy as np
 import cv2
-from scipy.sparse import spdiags
+from scipy.signal import medfilt
+from scipy.sparse import coo_matrix
+import math
+import numpy.matlib
 
-# def normalize(mat):
-#     min = mat.min()
-#     max = mat.max()
-#     mat = np.uint8(255 * (mat - min) / (max - min))
-#     return mat.copy()
+DEBUG = False
+
 def normalize(mat, minv = 0, maxv = 255):
     min = mat.min()
     max = mat.max()
-    print(min, max, (maxv - minv) , (max - min), minv)
     mat = np.uint8(((mat - min) / (max - min) * (maxv - minv)) + minv)
-    # print(mat)
     return mat.copy()
-def outlier_detection(label, label_r):
-    outlier = np.empty_like(label)
-    # 0: not an outlier, 1: mismatch point, 2: occlusion point
-    for y in range(label.shape[1]):
-        for x in range(label.shape[1]):
-            if x - label[y][x] < 0:
-                outlier[y][x] = 2
-            elif abs(label[y][x] - label_r[y][x - label[y][x]]) < 1.1:
-                outlier[y][x] = 0
-            else:
-                for disp in range(16):
-                    if x - disp > 0 and abs(disp - label_r[y][x - disp]) < 1.1:
-                        outlier[y][x] = 1
-                        break
-                    else:
-                        outlier[y][x] = 2
-    return outlier
 
-
+def rgb2gray(img):
+    return img[:, :, 0] * 0.114 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.2989
 # load images
-imgLeft = cv2.imread('./img/tsukuba_l.png', 0)
-imgRight = cv2.imread('./img/tsukuba_r.png', 0)
 rgbLeft = cv2.imread('./img/tsukuba_rgb_l.png')
 rgbRight = cv2.imread('./img/tsukuba_rgb_r.png')
-# rgbLeft = cv2.imread('./img/view1.png')
-# rgbRight = cv2.imread('./img/view5.png')
 rgbLeft = np.array(rgbLeft, dtype=np.int16)
 rgbRight = np.array(rgbRight, dtype=np.int16)
 h, w, ch = rgbLeft.shape
 
-
-######## BM ########
-# Initialize the stereo block matching object 
-stereo_l = cv2.StereoBM_create(numDisparities=16, blockSize=13)
-stereo_r = cv2.StereoBM_create(numDisparities=16, blockSize=13)
-# stereo_r = cv2.ximgproc.createRightMatcher(stereo_l);
-
-# Compute the disparity image
-# dspLeft = stereo_l.compute(imgLeft, imgRight)
-# dspRight = np.flip(stereo_r.compute(np.flip(imgRight, axis=1), np.flip(imgLeft, axis=1)), axis=1)
-
-# dspLeft -=(dspLeft.min() - dspRight.min())
-# dspRight = np.int8(dspRight / 32)
-# dspRight = -1 * dspRight
-
-# Normalize the image for representation
-# dspLeftv = normalize(dspLeft)
-# dspRightv = normalize(dspRight)
-
-# dspRightv -= 255
-# cv2.normalize(dspLeft, dspLeftv, 0, 255, cv2.NORM_MINMAX)
-# cv2.normalize(dspRight, dspRightv, 0, 255, cv2.NORM_MINMAX)
-# min = disparity.min()
-# max = disparity.max()
-# disparity = np.uint8(255 * (disparity - min) / (max - min))
-# for i in range(rgbLeft.shape[0]):
-#     for j in range(rgbLeft.shape[1]):
-#         print(dspLeft[i][j], dspRight[i][j])
-# print(dspLeft.min())
-# print(dspRight.min())
-# print(dspLeft.max())
-# print(dspRight.max())
-
-# dspLeft = np.int8(dspLeft / 16)
-# dspRight = np.int8(dspRight / 16)
-
-# Display the result
-# cv2.imwrite('./depth map/depthMap-left.png', dspLeftv)
-# cv2.imwrite('./depth map/depthMap-right.png', dspRightv)
-
-
-######## SGBM ########
-# mindisparity = 0
-# ndisparities = 64
-# SADWindowSize = 5
-# P1 = 8 * 3 * SADWindowSize* SADWindowSize
-# P2 = 32 * 3 * SADWindowSize* SADWindowSize
-# blockSize = 5
-# stereoSGBM = cv2.StereoSGBM_create(
-#     minDisparity=mindisparity,
-#     numDisparities=ndisparities,
-#     blockSize=SADWindowSize,
-#     uniquenessRatio=10,
-#     speckleWindowSize=100,
-#     speckleRange=2,
-#     disp12MaxDiff=1,
-#     P1=8 * 3 * SADWindowSize ** 2,
-#     P2=32 * 3 * SADWindowSize ** 2,
-#     mode=cv2.StereoSGBM_MODE_HH,
-# )
-# disparity_SGBM = stereoSGBM.compute(imgLeft, imgRight)
-# disparity_SGBM = np.float32(disparity_SGBM/16)
-# min = disparity_SGBM.min()
-# max = disparity_SGBM.max()
-# print(min, max)
-# disparity = np.uint8(255 * (disparity_SGBM - min) / (max - min))
-# cv2.normalize(disparity_SGBM, disparity_SGBM, )
-# cv2.imwrite('./depth map/depthMap-SBGM.png', disparity)
-
-
 ######## Cost Volume Filtering ########
 print('* Cost Volume Filtering')
-h, w, ch = rgbLeft.shape
 r = 9
 eps = 0.0001
 thresColor = 7/255
@@ -126,54 +32,35 @@ gamma = 0.11
 gamma_c = 0.1
 gamma_d = 9
 r_median = 11
-def matlabBGR2gray(img):
-    return img[:, :, 0] * 0.114 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.2989
+
 max_disp = 16
-Il_g = matlabBGR2gray(rgbLeft)/255.0
-Ir_g = matlabBGR2gray(rgbRight)/255.0
+
+Il_g = rgb2gray(rgbLeft)/255.0
+Ir_g = rgb2gray(rgbRight)/255.0
 Il = rgbLeft/255.0
 Ir = rgbRight/255.0
 fx_l = np.gradient(Il_g, axis=1) + 0.5
 fx_r = np.gradient(Ir_g, axis=1) + 0.5
+
 def costVolume(rgbLeft, rgbRight, gradLeft, gradRight, max_disp):
-    print('* Cost Volume Filtering')
     vol = np.ones((max_disp, h,w))
     for k in range(1, max_disp+1):
         tmp = np.ones((h,w,ch))
-        # tmp = np.ones((h,w,ch))*threshBorder
         tmp[:,k:w,:] = rgbRight[:,:w-k,:] # move right image with disparity k
         dist = abs(tmp - rgbLeft)
         dist = np.mean(dist, axis=2)
         dist = np.minimum(dist, thresColor)
 
         tmp = np.ones((h,w))
-        # tmp = np.ones((h,w))*threshBorder
         tmp[:,k:w] = gradRight[:,:w-k]
         distGrad = abs(tmp - gradLeft)
         distGrad = np.minimum(distGrad, thresGrad)
 
         p = gamma*dist+(1-gamma)*distGrad
         vol[k-1,:,:] = p
-        cv2.imwrite('./depth map/filvol%2d.png'% (k-1), normalize(vol[k-1,:,:]))
-        # print(distance.shape)
-        # if w - k > 0:
-        #     # vol[k][i][j] = np.linalg.norm(rgbLeft[i][j] - rgbRight[i][j - k])
-        #     vol[k,:,:] = np.mean(abs(rgbLeft[:,k:w,:] - rgbRight[:,:w-k,:]), axis=2)
-        # else:
-        #     vol[k,:,:] = np.mean(abs(rgbLeft[:,:,:], axis=2))
-    # for i in range(max_disp):
-        # vol[i] = cv2.bilateralFilter(normalize(vol[i]), 10, 12, 12)
-        
+        if DEBUG:
+            cv2.imwrite('./depth map/filvol%2d.png'% (k-1), normalize(vol[k-1,:,:]))
 
-    # for i in range(rgbLeft.shape[0]):
-    #     for j in range(rgbLeft.shape[1]):
-    #         minNorm = 10e6
-    #         disp = -1
-    #         for k in range(max_disp):
-    #             if vol[k][i][j] < minNorm:
-    #                 minNorm = vol[k][i][j]
-    #                 disp = k
-    #         dis[i][j] = disp
     for d in range(max_disp):
         p = vol[d,:,:]
         q = cv2.ximgproc.guidedFilter(normalize(rgbLeft), normalize(p), r, eps)
@@ -183,111 +70,25 @@ def costVolume(rgbLeft, rgbRight, gradLeft, gradRight, max_disp):
     return dis.copy()
 dspLeft = costVolume(Il, Ir, fx_l, fx_r, max_disp)
 dspRight = np.fliplr(costVolume(np.fliplr(Ir), np.fliplr(Il), np.fliplr(fx_r), np.fliplr(fx_l), max_disp))
-cv2.imwrite('./depth map/depthMap_l.png', normalize(dspLeft))
-cv2.imwrite('./depth map/depthMap_r.png', normalize(dspRight))
-# cv2.imwrite('./depth map/l.png', np.flip(rgbLeft, axis=1))
-# cv2.imwrite('./depth map/r.png', np.flip(rgbRight, axis=1))
-
-
-######## cvf 2 ########
-r = 9
-eps = 0.0001
-thresColor = 7/255
-thresGrad = 2/255
-gamma = 0.11
-threshBorder = 3/255
-gamma_c = 0.1
-gamma_d = 9
-r_median = 19
-
-# r = 5
-# eps = 0.1
-# thresColor = 10/255
-# thresGrad = 4/255
-# gamma = 0.01
-# threshBorder = 5/255
-# gamma_c = 0.1
-# gamma_d = 5
-# r_median = 5
-
-
-def cvf(Il, Ir, fx_l, fx_r, max_disp):
-    dispVol = np.ones((h,w,max_disp))*threshBorder
-    for d in range(1,max_disp+1):
-        tmp = np.ones((h,w,ch))*threshBorder
-        tmp[:,d:w,:] = Ir[:,:w-d,:]
-        p_color = abs(tmp - Il)
-        p_color = np.mean(p_color, axis = 2)
-        p_color = np.minimum(p_color, thresColor)
-
-        tmp = np.ones((h,w))*threshBorder
-        tmp[:,d:w] = fx_r[:,:w-d]
-        p_grad = abs(tmp - fx_l)
-        p_grad = np.minimum(p_grad, thresGrad)
-
-        p = gamma*p_color+(1-gamma)*p_grad
-        dispVol[:,:,d-1] = p
-    # for d in range(1,max_disp+1):
-    #     cv2.imwrite('./depth map/vol%2d.png'% d, normalize(dispVol[:,:,d-1]))
-    # for d in range(1,max_disp+1):
-    #     dispVol[:,:,d-1] = cv2.bilateralFilter(normalize(dispVol[:,:,d-1]), 7, 12, 12).copy()
-    #     # dispVol[:,:,d-1] = cv2.medianBlur(normalize(dispVol[:,:,d-1]), 3).copy()
-        cv2.imwrite('./depth map/filvol%2d.png'% d, normalize(dispVol[:,:,d-1]))
-    for d in range(max_disp):
-        p = dispVol[:,:,d]
-
-        q = cv2.ximgproc.guidedFilter(normalize(Il), normalize(p), r, eps)
-        # q = cv2.medianBlur(q, 5).copy()
-        dispVol[:,:,d] = q
-    dis = (np.argmin(dispVol, axis = 2) + np.ones((h,w)) ).astype(int)
-    return dis.copy()
-
-# Il_g = rgbLeft/255.0
-# Ir_g = imgRight/255.0
-Il_g = matlabBGR2gray(rgbLeft)/255.0
-Ir_g = matlabBGR2gray(rgbRight)/255.0
-Il = rgbLeft/255.0
-Ir = rgbRight/255.0
-fx_l = np.gradient(Il_g, axis=1) + 0.5
-fx_r = np.gradient(Ir_g, axis=1) + 0.5
-cv2.imwrite('./depth map/depthMap_fx_l.png', normalize(fx_l))
-cv2.imwrite('./depth map/depthMap_fx_r.png', normalize(fx_r))
-# dspLeft = cvf(Il, Ir, fx_l, fx_r, max_disp)
-# dspRight = np.fliplr(cvf(np.fliplr(Ir).copy(), np.fliplr(Il).copy(), np.fliplr(fx_r).copy(), np.fliplr(fx_l).copy(), max_disp)).copy()
-# cv2.imwrite('./depth map/depthMap_l.png', normalize(dspLeft))
-# cv2.imwrite('./depth map/depthMap_r.png', normalize(dspRight))
-
+if DEBUG:
+    cv2.imwrite('./depth map/depthMap_l.png', normalize(dspLeft))
+    cv2.imwrite('./depth map/depthMap_r.png', normalize(dspRight))
 
 ######## Disparity Consistancy ########
 print('* Disparity Consistancy')
-print(dspLeft.shape)
 check = np.zeros((h, w))
 for i in range(rgbLeft.shape[0]):
     for j in range(rgbLeft.shape[1]):
-        # print(dspLeft[i][j])
-        # if dspLeft[i][j] == -1:
-        #     continue
         if j - dspLeft[i][j] >= rgbLeft.shape[1] or j - dspLeft[i][j] < 0:
             continue
         if abs(dspLeft[i][j] - dspRight[i][j - dspLeft[i][j]]) < 2:
             check[i][j] = 255
-        # print(j + dspLeft[i][j])
-        # if j + dspLeft[i][j] >= rgbLeft.shape[1]:
-        #     # print("**")
-        #     continue
-        # elif imgRight[i][j + dspLeft[i][j]] - rgbLeft[i][j] < 30:
-        #     check[i][j] == 255
 check = np.uint8(check)
-cv2.imwrite('./depth map/depthMap-check.png', check)
-# out = outlier_detection(dspLeft, dspRight)
-# cv2.imwrite('./depth map/depthMap-outlier.png', out)
-
-
+if DEBUG:
+    cv2.imwrite('./depth map/depthMap-check.png', check)
 
 ####### Hole Filling ########
 print('* Hole Filling')
-# print(dspLeft)
-# print(check)
 after_fill = np.zeros((h, w))
 for i in range(rgbLeft.shape[0]):
     for j in range(rgbLeft.shape[1]):
@@ -319,51 +120,14 @@ for i in range(rgbLeft.shape[0]):
             after_fill[i][j] = min(fl, fr)
         else:
             after_fill[i][j] = dspLeft[i][j]
-cv2.imwrite('./depth map/depthMap-fill.png', normalize(after_fill))
+# cv2.imwrite('./depth map/depthMap-fill.png', normalize(after_fill))
 after_fill = cv2.medianBlur(normalize(after_fill), 7)
-cv2.imwrite('./depth map/depthMap-fill2.png', after_fill)
+if DEBUG:
+    cv2.imwrite('./depth map/depthMap-fill2.png', after_fill)
 
+####### Weighted Medium Filtering ########
+print("* Weighted Medium Filtering")
 
-####### Weighted Medium Filter ########
-# after_medium = cv2.medianBlur(after_fill, 3)
-# window_size = 5
-# # for i in range(rgbLeft.shape[0]):
-# #     for j in range(rgbLeft.shape[1]):
-
-# cv2.imwrite('./depth map/depthMap-medium.png', after_medium)
-from scipy.signal import medfilt
-from scipy.sparse import coo_matrix
-import math
-import numpy.matlib
-def fillPixelaReference(Il, final_labels, max_disp):
-    h,w = final_labels.shape
-    occPix = np.zeros((h,w))
-    occPix[final_labels<0] = 1
-    
-    fillVals = np.ones((h)) * max_disp
-    final_labels_filled = final_labels.copy()
-
-    for col in range(w):
-        curCol = final_labels[:,col].copy()
-        curCol[curCol==-1] = fillVals[curCol==-1]
-        fillVals[curCol!=-1] = curCol[curCol!=-1]
-        final_labels_filled[:,col] = curCol
-    
-    fillVals = np.ones((h)) * max_disp
-    final_labels_filled1 = final_labels.copy()
-    for col in reversed(range(w)):
-        curCol = final_labels[:,col].copy()
-        curCol[curCol==-1] = fillVals[curCol==-1]
-        fillVals[curCol!=-1] = curCol[curCol!=-1]
-        final_labels_filled1[:,col] = curCol
-
-    final_labels = np.fmin(final_labels_filled, final_labels_filled1)
-
-    final_labels_smoothed = weightedMedianMatlab(Il, final_labels.copy(), r_median)
-    final_labels[occPix==1] = final_labels_smoothed[occPix==1]
-
-
-    return final_labels
 def weightedMedianMatlab(left_img, disp_img, winsize):
     h, w, c = left_img.shape
 
@@ -374,13 +138,13 @@ def weightedMedianMatlab(left_img, disp_img, winsize):
 
     for d in range(1,max_disp+1):
         # Right to left
-        tmp = np.ones((h,w,ch))*threshBorder
+        tmp = np.ones((h,w,ch))
         tmp[:,d:w,:] = Ir[:,:w-d,:]
         p_color = abs(tmp - Il)
         p_color = np.mean(p_color, axis = 2)
         p_color = np.minimum(p_color, thresColor)
 
-        tmp = np.ones((h,w))*threshBorder
+        tmp = np.ones((h,w))
         tmp[:,d:w] = fx_r[:,:w-d]
         p_grad = abs(tmp - fx_l)
         p_grad = np.minimum(p_grad, thresGrad)
@@ -396,9 +160,9 @@ def weightedMedianMatlab(left_img, disp_img, winsize):
             dispVals = disp_img[max(0,y-radius):min(h,y+radius),max(0,x-radius):min(w,x+radius)].copy()
             maxDispVal = int(np.amax(dispVals))
 
-            dispVals_f = (dispVals.copy() - 1).astype(np.int).flatten()
+            dispVals_f = (dispVals.copy() - 1).astype(np.int16).flatten()
             maskVals_f = (maskVals.flatten()).astype(np.double)
-            zeros_f = np.zeros(dispVals.shape).astype(np.int).flatten()
+            zeros_f = np.zeros(dispVals.shape).astype(np.int16).flatten()
 
             hist = coo_matrix((maskVals_f,(zeros_f,dispVals_f)), shape = (1,maxDispVal)).toarray()
             hist_sum = np.sum(hist)
@@ -440,20 +204,6 @@ def filtermask(colimg, x, y, winsize):
 
     return weights
 
-# Y = np.matlib.repmat(np.array(range(h)).reshape(-1,1), 1, w)
-# X = np.matlib.repmat(np.array(range(w)), h,1 ) - dspLeft
-# X[X<0] = 0
-# labelstmp = np.zeros((h,w))
-# for i in range(h):
-#     for j in range(w):
-#         labelstmp[i,j] = dspRight[i,X[i,j]]
-# final_labels = dspLeft
-# final_labels[abs(dspLeft - labelstmp)>=1] = -1
-
-# inputLabels = final_labels.copy()
-# final_labels = fillPixelaReference(Il, inputLabels, max_disp) 
-print(dspLeft.max(), dspLeft.min(), after_fill.max(), after_fill.min())
 after_fill = normalize(after_fill, 1, 16)
-print(dspLeft.max(), dspLeft.min(), after_fill.max(), after_fill.min())
-final_labels = weightedMedianMatlab(Il, after_fill, 11)
-cv2.imwrite('./depth map/depthMap-final.png', normalize(final_labels))
+final = weightedMedianMatlab(Il, after_fill, 25)
+cv2.imwrite('./depth map/depthMap.png', normalize(final))
